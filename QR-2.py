@@ -11,18 +11,10 @@ ADMIN_CREDENTIALS = {
     "admin": "admin_password"
 }
 
-# Function to connect to the database
+# Function to connect to the database (new database file)
 def get_connection():
-    conn = sqlite3.connect('reports.db')
+    conn = sqlite3.connect('new_reports.db')  # Change the database file name here
     return conn
-
-# Function to drop the table if it exists (use with caution)
-def drop_table():
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("DROP TABLE IF EXISTS reports")
-    conn.commit()
-    conn.close()
 
 # Function to create a table if it doesn't exist
 def create_table():
@@ -35,14 +27,18 @@ def create_table():
 
 # Function to save data in the database
 def save_data(charger_id, status, image):
-    utc_time = datetime.now(pytz.utc)
-    timestamp = utc_time.strftime("%Y-%m-%d %H:%M:%S")
-    conn = get_connection()
-    c = conn.cursor()
-    c.execute("INSERT INTO reports (timestamp, charger_id, status, image) VALUES (?, ?, ?, ?)", 
-              (timestamp, charger_id, status, image))
-    conn.commit()
-    conn.close()
+    try:
+        utc_time = datetime.now(pytz.utc)
+        timestamp = utc_time.strftime("%Y-%m-%d %H:%M:%S")
+        conn = get_connection()
+        c = conn.cursor()
+        c.execute("INSERT INTO reports (timestamp, charger_id, status, image) VALUES (?, ?, ?, ?)", 
+                  (timestamp, charger_id, status, image))
+        conn.commit()
+    except sqlite3.Error as e:
+        st.error(f"An error occurred while saving data: {e}")
+    finally:
+        conn.close()
 
 # Function to get all reports from the database
 def get_reports(limit=None):
@@ -55,24 +51,14 @@ def get_reports(limit=None):
     try:
         c.execute(query)
         rows = c.fetchall()
+        if not rows:
+            st.info("No reports found in the database.")
+        return rows
     except sqlite3.Error as e:
         st.error(f"An error occurred: {e}")
-        rows = []
-    
-    conn.close()
-    
-    # Convert timestamps to Pacific Time
-    pacific = pytz.timezone('US/Pacific')
-    utc = pytz.utc
-    reports = []
-    for row in rows:
-        utc_time = datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-        # Localize the time to UTC and then convert it to Pacific Time
-        utc_time = utc.localize(utc_time)
-        pacific_time = utc_time.astimezone(pacific).strftime("%Y-%m-%d %H:%M:%S %Z")
-        reports.append((pacific_time, row[1], row[2], row[3]))
-    
-    return reports
+        return []
+    finally:
+        conn.close()
 
 # User authentication
 def authenticate(username, password):
@@ -80,10 +66,7 @@ def authenticate(username, password):
 
 # Main function
 def main():
-    # Drop the existing reports table (only run this if you need to reset the table)
-    drop_table()  # Remove or comment this line after running once
-
-    # Create the reports table
+    # Create the reports table in the new database
     create_table()
 
     st.markdown("### Recent Reports")
